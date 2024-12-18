@@ -9,7 +9,7 @@ use core_graphics::display::{CGDisplay, CGPoint};
 use monitor::VideoModeHandle;
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+use objc2::{declare_class, msg_send_id, msg_send, mutability, sel, ClassType, DeclaredClass};
 use objc2_app_kit::{
     NSAppKitVersionNumber, NSAppKitVersionNumber10_12, NSAppearance, NSAppearanceCustomization,
     NSAppearanceNameAqua, NSApplication, NSApplicationPresentationOptions, NSBackingStoreType,
@@ -369,11 +369,12 @@ declare_class!(
 
             use std::path::PathBuf;
 
-            let pb: Id<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
+            //let pb: Id<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
+            let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
             let filenames = pb.propertyListForType(unsafe { NSFilenamesPboardType })
             .expect("Expected valid property list for type NSFilenamesPboardType");
 
-            let filenames: Id<NSArray<NSString>> = unsafe { Id::cast::<NSArray<NSString>>(filenames) };
+            let filenames: Retained<NSArray<NSString>> = unsafe { Retained::cast::<NSArray<NSString>>(filenames) };
 
             let paths: Vec<PathBuf> = filenames
                 .into_iter()
@@ -428,12 +429,12 @@ declare_class!(
 
             use std::path::PathBuf;
 
-            let pb: Id<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
+            let pb: Retained<NSPasteboard> = unsafe { msg_send_id![sender, draggingPasteboard] };
             let filenames = pb
                 .propertyListForType(unsafe { NSFilenamesPboardType })
                 .expect("Expected valid property list for type NSFilenamesPboardType");
 
-            let filenames: Id<NSArray<NSString>> = unsafe { Id::cast::<NSArray<NSString>>(filenames) };
+            let filenames: Retained<NSArray<NSString>> = unsafe { Retained::cast::<NSArray<NSString>>(filenames) };
 
 
             let paths = filenames
