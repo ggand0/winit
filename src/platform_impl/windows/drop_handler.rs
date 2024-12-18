@@ -5,7 +5,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use windows_sys::core::{IUnknown, GUID, HRESULT};
-use windows_sys::Win32::Foundation::{DV_E_FORMATETC, HWND, POINTL, S_OK};
+use windows_sys::Win32::Foundation::{DV_E_FORMATETC, HWND, POINT, POINTL, S_OK};
 use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::System::Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
 use windows_sys::Win32::System::Ole::{CF_HDROP, DROPEFFECT_COPY, DROPEFFECT_NONE};
@@ -13,10 +13,7 @@ use windows_sys::Win32::UI::Shell::{DragFinish, DragQueryFileW, HDROP};
 
 use tracing::debug;
 
-use crate::platform_impl::platform::definitions::{
-    IDataObjectVtbl, IDropTarget, IDropTargetVtbl, IUnknownVtbl,
-};
-use crate::platform_impl::platform::WindowId;
+//use crate::platform_impl::platform::WindowId;
 
 use crate::{
     dpi::PhysicalPosition,
@@ -98,10 +95,14 @@ impl FileDropHandler {
         let drop_handler = unsafe { Self::from_interface(this) };
 
         let mut pt = POINT { x: pt.x, y: pt.y };
-        ScreenToClient(drop_handler.window, &mut pt);
+        //ScreenToClient(drop_handler.window, &mut pt);
+        unsafe {
+            ScreenToClient(drop_handler.window, &mut pt);
+        }
         let position = PhysicalPosition::new(pt.x as f64, pt.y as f64);
         let mut paths = Vec::new();
-        let hdrop = Self::iterate_filenames(pDataObj, |path| paths.push(path));
+        //let hdrop = Self::iterate_filenames(pDataObj, |path| paths.push(path));
+        let hdrop = unsafe { Self::iterate_filenames(pDataObj, |path| paths.push(path)) };
         drop_handler.send_event(Event::WindowEvent {
             window_id: RootWindowId(WindowId(drop_handler.window)),
             event: DragEnter { paths, position },
@@ -131,7 +132,10 @@ impl FileDropHandler {
 
         if drop_handler.enter_is_valid {
             let mut pt = POINT { x: pt.x, y: pt.y };
-            ScreenToClient(drop_handler.window, &mut pt);
+            //ScreenToClient(drop_handler.window, &mut pt);
+            unsafe {
+                ScreenToClient(drop_handler.window, &mut pt);
+            }
             let position = PhysicalPosition::new(pt.x as f64, pt.y as f64);
             drop_handler.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(drop_handler.window)),
@@ -167,19 +171,29 @@ impl FileDropHandler {
         _pdwEffect: *mut u32,
     ) -> HRESULT {
         use crate::event::WindowEvent::DragDrop;
-        let drop_handler = Self::from_interface(this);
+        //let drop_handler = Self::from_interface(this);
+        let drop_handler = unsafe { Self::from_interface(this) };
+
         if drop_handler.enter_is_valid {
             let mut pt = POINT { x: pt.x, y: pt.y };
-            ScreenToClient(drop_handler.window, &mut pt);
+            //ScreenToClient(drop_handler.window, &mut pt);
+            unsafe {
+                ScreenToClient(drop_handler.window, &mut pt);
+            }
             let position = PhysicalPosition::new(pt.x as f64, pt.y as f64);
             let mut paths = Vec::new();
-            let hdrop = Self::iterate_filenames(pDataObj, |path| paths.push(path));
+            //let hdrop = Self::iterate_filenames(pDataObj, |path| paths.push(path));
+            let hdrop = unsafe { Self::iterate_filenames(pDataObj, |path| paths.push(path)) };
             drop_handler.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(drop_handler.window)),
                 event: DragDrop { paths, position },
             });
             if let Some(hdrop) = hdrop {
-                DragFinish(hdrop);
+                //DragFinish(hdrop);
+                unsafe {
+                    DragFinish(hdrop);
+                }
+
             }
         }
 
