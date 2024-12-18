@@ -434,7 +434,7 @@ impl EventProcessor {
             let flags = xev.data.get_long(1);
             let version = flags >> 24;
             self.dnd.version = Some(version);
-            let has_more_types = flags - (flags & (c_long::max_value() - 1)) == 1;
+            let has_more_types = flags - (flags & (c_long::MAX - 1)) == 1;
             if !has_more_types {
                 let type_list = vec![
                     xev.data.get_long(2) as xproto::Atom,
@@ -1424,7 +1424,7 @@ impl EventProcessor {
             if !xinput2::XIMaskIsSet(mask, i) {
                 continue;
             }
-            let x = unsafe { *value };
+            let x = unsafe { value.read_unaligned() };
 
             // We assume that every XInput2 device with analog axes is a pointing device emitting
             // relative coordinates.

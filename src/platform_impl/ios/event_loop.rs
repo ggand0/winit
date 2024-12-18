@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
-use std::ffi::c_void;
+use std::ffi::{c_char, c_int, c_void};
 use std::marker::PhantomData;
-use std::ptr;
+use std::ptr::{self, NonNull};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use core_foundation::base::{CFIndex, CFRelease};
@@ -11,8 +11,10 @@ use core_foundation::runloop::{
     CFRunLoopObserverCreate, CFRunLoopObserverRef, CFRunLoopSourceContext, CFRunLoopSourceCreate,
     CFRunLoopSourceInvalidate, CFRunLoopSourceRef, CFRunLoopSourceSignal, CFRunLoopWakeUp,
 };
-use objc2::ClassType;
+use objc2::rc::Retained;
+use objc2::{msg_send_id, ClassType};
 use objc2_foundation::{MainThreadMarker, NSString};
+use objc2_ui_kit::{UIApplication, UIApplicationMain, UIDevice, UIScreen, UIUserInterfaceIdiom};
 
 use crate::error::EventLoopError;
 use crate::event::Event;
@@ -20,12 +22,11 @@ use crate::event_loop::{
     ActiveEventLoop as RootActiveEventLoop, ControlFlow, DeviceEvents, EventLoopClosed,
 };
 use crate::platform::ios::Idiom;
-use crate::platform_impl::platform::app_state::{EventLoopHandler, HandlePendingUserEvents};
-use crate::window::{CustomCursor, CustomCursorSource};
+use crate::platform_impl::ios::app_state::{EventLoopHandler, HandlePendingUserEvents};
+use crate::window::{CustomCursor, CustomCursorSource, Theme};
 
 use super::app_delegate::AppDelegate;
 use super::app_state::AppState;
-use super::uikit::{UIApplication, UIApplicationMain, UIDevice, UIScreen, UIUserInterfaceIdiom};
 use super::{app_state, monitor, MonitorHandle};
 
 #[derive(Debug)]
@@ -44,7 +45,8 @@ impl ActiveEventLoop {
     }
 
     pub fn primary_monitor(&self) -> Option<MonitorHandle> {
-        Some(MonitorHandle::new(UIScreen::main(self.mtm)))
+        #[allow(deprecated)]
+        Some(MonitorHandle::new(UIScreen::mainScreen(self.mtm)))
     }
 
     #[inline]
@@ -54,6 +56,11 @@ impl ActiveEventLoop {
     #[inline]
     pub fn raw_display_handle_rwh_05(&self) -> rwh_05::RawDisplayHandle {
         rwh_05::RawDisplayHandle::UiKit(rwh_05::UiKitDisplayHandle::empty())
+    }
+
+    #[inline]
+    pub fn system_theme(&self) -> Option<Theme> {
+        None
     }
 
     #[cfg(feature = "rwh_06")]
@@ -163,7 +170,8 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(Event<T>, &RootActiveEventLoop),
     {
-        let application = UIApplication::shared(self.mtm);
+        let application: Option<Retained<UIApplication>> =
+            unsafe { msg_send_id![UIApplication::class(), sharedApplication] };
         assert!(
             application.is_none(),
             "\
@@ -187,8 +195,19 @@ impl<T: 'static> EventLoop<T> {
         // Ensure application delegate is initialized
         let _ = AppDelegate::class();
 
+        extern "C" {
+            // These functions are in crt_externs.h.
+            fn _NSGetArgc() -> *mut c_int;
+            fn _NSGetArgv() -> *mut *mut *mut c_char;
+        }
+
         unsafe {
-            UIApplicationMain(0, ptr::null(), None, Some(&NSString::from_str(AppDelegate::NAME)))
+            UIApplicationMain(
+                *_NSGetArgc(),
+                NonNull::new(*_NSGetArgv()).unwrap(),
+                None,
+                Some(&NSString::from_str(AppDelegate::NAME)),
+            )
         };
         unreachable!()
     }
@@ -205,7 +224,7 @@ impl<T: 'static> EventLoop<T> {
 // EventLoopExtIOS
 impl<T: 'static> EventLoop<T> {
     pub fn idiom(&self) -> Idiom {
-        match UIDevice::current(self.mtm).userInterfaceIdiom() {
+        match UIDevice::currentDevice(self.mtm).userInterfaceIdiom() {
             UIUserInterfaceIdiom::Unspecified => Idiom::Unspecified,
             UIUserInterfaceIdiom::Phone => Idiom::Phone,
             UIUserInterfaceIdiom::Pad => Idiom::Pad,
@@ -260,8 +279,7 @@ impl<T> EventLoopProxy<T> {
                 cancel: None,
                 perform: event_loop_proxy_handler,
             };
-            let source =
-                CFRunLoopSourceCreate(ptr::null_mut(), CFIndex::max_value() - 1, &mut context);
+            let source = CFRunLoopSourceCreate(ptr::null_mut(), CFIndex::MAX - 1, &mut context);
             CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
             CFRunLoopWakeUp(rl);
 
@@ -344,7 +362,7 @@ fn setup_control_flow_observers() {
             ptr::null_mut(),
             kCFRunLoopAfterWaiting,
             1, // repeat = true
-            CFIndex::min_value(),
+            CFIndex::MIN,
             control_flow_begin_handler,
             ptr::null_mut(),
         );
@@ -364,7 +382,7 @@ fn setup_control_flow_observers() {
             ptr::null_mut(),
             kCFRunLoopExit | kCFRunLoopBeforeWaiting,
             1, // repeat = true
-            CFIndex::max_value(),
+            CFIndex::MAX,
             control_flow_end_handler,
             ptr::null_mut(),
         );

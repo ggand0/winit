@@ -1,11 +1,9 @@
-#![cfg(ios_platform)]
 #![allow(clippy::let_unit_value)]
 
 mod app_delegate;
 mod app_state;
 mod event_loop;
 mod monitor;
-mod uikit;
 mod view;
 mod view_controller;
 mod window;
@@ -34,7 +32,7 @@ pub(crate) use crate::platform_impl::Fullscreen;
 pub struct DeviceId;
 
 impl DeviceId {
-    pub const unsafe fn dummy() -> Self {
+    pub const fn dummy() -> Self {
         DeviceId
     }
 }

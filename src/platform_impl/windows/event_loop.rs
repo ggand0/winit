@@ -81,7 +81,7 @@ use crate::platform_impl::platform::{
     raw_input, util, wrap_device_id, Fullscreen, WindowId, DEVICE_ID,
 };
 use crate::window::{
-    CustomCursor as RootCustomCursor, CustomCursorSource, WindowId as RootWindowId,
+    CustomCursor as RootCustomCursor, CustomCursorSource, Theme, WindowId as RootWindowId,
 };
 use runner::{EventLoopRunner, EventLoopRunnerShared};
 
@@ -548,6 +548,10 @@ impl ActiveEventLoop {
 
     pub fn listen_device_events(&self, allowed: DeviceEvents) {
         raw_input::register_all_mice_and_keyboards_for_raw_input(self.thread_msg_target, allowed);
+    }
+
+    pub fn system_theme(&self) -> Option<Theme> {
+        Some(if super::dark_mode::should_use_dark_mode() { Theme::Dark } else { Theme::Light })
     }
 
     pub(crate) fn set_control_flow(&self, control_flow: ControlFlow) {
@@ -2441,7 +2445,7 @@ unsafe extern "system" fn thread_event_target_callback(
     if userdata_removed {
         drop(userdata);
     } else {
-        Box::into_raw(userdata);
+        Box::leak(userdata);
     }
     result
 }

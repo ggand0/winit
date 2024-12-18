@@ -10,7 +10,7 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: taiki-e/checkout-action@v1
     - uses: dtolnay/rust-toolchain@nightly
       with:
         components: rustfmt
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - uses: taiki-e/install-action@v2
         with:
           tool: typos-cli
@@ -88,7 +88,7 @@ jobs:
       CMD: ${{ matrix.platform.cmd }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: taiki-e/checkout-action@v1
 
     - name: Restore cache of cargo folder
       # We use `restore` and later `save`, so that we can create the key after
@@ -220,9 +220,24 @@ jobs:
           - { name: 'Windows', target: x86_64-pc-windows-gnu }
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: taiki-e/checkout-action@v1
     - uses: EmbarkStudios/cargo-deny-action@v1
       with:
         command: check
         log-level: error
         arguments: --all-features --target ${{ matrix.platform.target }}
+
+  swc:
+    name: Minimize JavaScript
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: taiki-e/checkout-action@v1
+      - name: Install SWC
+        run: sudo npm i -g @swc/cli
+      - name: Run SWC
+        run: |
+          swc src/platform_impl/web/web_sys/worker.js -o src/platform_impl/web/web_sys/worker.min.js
+      - name: Check for diff
+        run: |
+          [[ -z $(git status -s) ]]

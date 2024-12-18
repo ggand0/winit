@@ -157,7 +157,7 @@ impl From<u64> for WindowId {
 }
 
 impl WindowId {
-    pub const unsafe fn dummy() -> Self {
+    pub const fn dummy() -> Self {
         Self(0)
     }
 }
@@ -171,11 +171,11 @@ pub enum DeviceId {
 }
 
 impl DeviceId {
-    pub const unsafe fn dummy() -> Self {
+    pub const fn dummy() -> Self {
         #[cfg(wayland_platform)]
-        return DeviceId::Wayland(unsafe { wayland::DeviceId::dummy() });
+        return DeviceId::Wayland(wayland::DeviceId::dummy());
         #[cfg(all(not(wayland_platform), x11_platform))]
-        return DeviceId::X(unsafe { x11::DeviceId::dummy() });
+        return DeviceId::X(x11::DeviceId::dummy());
     }
 }
 
@@ -785,6 +785,16 @@ impl<T: 'static> EventLoop<T> {
         Ok(EventLoop::X(x11::EventLoop::new(xconn)))
     }
 
+    #[inline]
+    pub fn is_wayland(&self) -> bool {
+        match *self {
+            #[cfg(wayland_platform)]
+            EventLoop::Wayland(_) => true,
+            #[cfg(x11_platform)]
+            _ => false,
+        }
+    }
+
     pub fn create_proxy(&self) -> EventLoopProxy<T> {
         x11_or_wayland!(match self; EventLoop(evlp) => evlp.create_proxy(); as EventLoopProxy)
     }
@@ -885,6 +895,11 @@ impl ActiveEventLoop {
     #[inline]
     pub fn raw_display_handle_rwh_05(&self) -> rwh_05::RawDisplayHandle {
         x11_or_wayland!(match self; Self(evlp) => evlp.raw_display_handle_rwh_05())
+    }
+
+    #[inline]
+    pub fn system_theme(&self) -> Option<Theme> {
+        None
     }
 
     #[cfg(feature = "rwh_06")]
