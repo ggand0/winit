@@ -544,7 +544,11 @@ impl EventProcessor {
                     for path in path_list {
                         let event = Event::WindowEvent {
                             window_id,
-                            event: WindowEvent::DroppedFile(path.clone()),
+                            //event: WindowEvent::DroppedFile(path.clone()),
+                            event: WindowEvent::DragDrop {
+                                paths: vec![path.clone()],
+                                position: PhysicalPosition::new(0.0, 0.0), // Placeholder
+                            },
                         };
                         callback(&self.target, event);
                     }
@@ -569,7 +573,7 @@ impl EventProcessor {
 
         if xev.message_type == atoms[XdndLeave] as c_ulong {
             self.dnd.reset();
-            let event = Event::WindowEvent { window_id, event: WindowEvent::HoveredFileCancelled };
+            let event = Event::WindowEvent { window_id, event: WindowEvent::DragLeave };
             callback(&self.target, event);
         }
     }
@@ -599,7 +603,10 @@ impl EventProcessor {
                 for path in path_list {
                     let event = Event::WindowEvent {
                         window_id,
-                        event: WindowEvent::HoveredFile(path.clone()),
+                        //event: WindowEvent::HoveredFile(path.clone()),
+                        event: WindowEvent::DragOver {
+                            position: PhysicalPosition::new(0.0, 0.0), // Placeholder, should be set correctly
+                        }                        
                     };
                     callback(&self.target, event);
                 }
