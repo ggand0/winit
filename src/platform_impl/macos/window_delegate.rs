@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 
 use core_graphics::display::{CGDisplay, CGPoint};
 use monitor::VideoModeHandle;
+use objc2::class;
 use objc2::rc::{autoreleasepool, Retained, Id};
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass};
@@ -848,7 +849,7 @@ impl WindowDelegate {
         self.window().setOpaque(!transparent)
     }
 
-    pub fn set_blur(&self, blur: bool) {
+    /*pub fn set_blur(&self, blur: bool) {
         // NOTE: in general we want to specify the blur radius, but the choice of 80
         // should be a reasonable default.
         let radius = if blur { 80 } else { 0 };
@@ -859,6 +860,64 @@ impl WindowDelegate {
                 window_number,
                 radius,
             );
+        }
+    }*/
+    pub fn set_blur(&self, blur: bool) {
+        let window = self.window();
+    
+        // Toggle blur based on the `blur` parameter
+        if blur {
+            // Create NSVisualEffectView
+            let effect_view: &objc2::runtime::AnyObject = unsafe {
+                let alloc: &objc2::runtime::AnyObject = msg_send![class!(NSVisualEffectView), alloc];
+                msg_send![alloc, init]
+            };
+    
+            // Configure the visual effect view
+            unsafe {
+                let _: () = msg_send![effect_view, setMaterial: objc2::sel!(NSVisualEffectMaterialAppearanceBased)];
+                let _: () = msg_send![effect_view, setState: objc2::sel!(NSVisualEffectStateActive)];
+                let _: () = msg_send![effect_view, setBlendingMode: objc2::sel!(NSVisualEffectBlendingModeBehindWindow)];
+                let _: () = msg_send![effect_view, setTranslatesAutoresizingMaskIntoConstraints: false];
+            }
+    
+            // Get the content view of the window
+            let content_view: &objc2::runtime::AnyObject = unsafe { msg_send![window, contentView] };
+    
+            // Add the visual effect view to the content view
+            unsafe {
+                let _: () = msg_send![content_view, addSubview: effect_view];
+            }
+    
+            // Add constraints using explicit casting to handle layout anchors
+            unsafe {
+                let leading_anchor: &objc2::runtime::AnyObject = msg_send![effect_view, leadingAnchor];
+                let trailing_anchor: &objc2::runtime::AnyObject = msg_send![effect_view, trailingAnchor];
+                let top_anchor: &objc2::runtime::AnyObject = msg_send![effect_view, topAnchor];
+                let bottom_anchor: &objc2::runtime::AnyObject = msg_send![effect_view, bottomAnchor];
+    
+                let content_leading: &objc2::runtime::AnyObject = msg_send![content_view, leadingAnchor];
+                let content_trailing: &objc2::runtime::AnyObject = msg_send![content_view, trailingAnchor];
+                let content_top: &objc2::runtime::AnyObject = msg_send![content_view, topAnchor];
+                let content_bottom: &objc2::runtime::AnyObject = msg_send![content_view, bottomAnchor];
+    
+                let _: () = msg_send![leading_anchor, constraintEqualToAnchor: content_leading];
+                let _: () = msg_send![trailing_anchor, constraintEqualToAnchor: content_trailing];
+                let _: () = msg_send![top_anchor, constraintEqualToAnchor: content_top];
+                let _: () = msg_send![bottom_anchor, constraintEqualToAnchor: content_bottom];
+            }
+        } else {
+            // Remove any existing NSVisualEffectView to disable the blur
+            let content_view: &objc2::runtime::AnyObject = unsafe { msg_send![window, contentView] };
+            let subviews: &objc2::runtime::AnyObject = unsafe { msg_send![content_view, subviews] };
+            let count: usize = unsafe { msg_send![subviews, count] };
+            for i in 0..count {
+                let subview: &objc2::runtime::AnyObject = unsafe { msg_send![subviews, objectAtIndex: i] };
+                let is_visual_effect_view: bool = unsafe { msg_send![subview, isKindOfClass: class!(NSVisualEffectView)] };
+                if is_visual_effect_view {
+                    unsafe { let _: () = msg_send![subview, removeFromSuperview]; }
+                }
+            }
         }
     }
 

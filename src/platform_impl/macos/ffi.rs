@@ -117,11 +117,11 @@ extern "C" {
 
     // Wildly used private APIs; Apple uses them for their Terminal.app.
     pub fn CGSMainConnectionID() -> *mut AnyObject;
-    pub fn CGSSetWindowBackgroundBlurRadius(
+    /*pub fn CGSSetWindowBackgroundBlurRadius(
         connection_id: *mut AnyObject,
         window_id: NSInteger,
         radius: i64,
-    ) -> i32;
+    ) -> i32;*/
 }
 
 mod core_video {
