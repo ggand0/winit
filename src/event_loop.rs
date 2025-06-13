@@ -23,7 +23,7 @@ use crate::error::{EventLoopError, OsError};
 use crate::event::Event;
 use crate::monitor::MonitorHandle;
 use crate::platform_impl;
-use crate::window::{CustomCursor, CustomCursorSource, Window, WindowAttributes};
+use crate::window::{CustomCursor, CustomCursorSource, Theme, Window, WindowAttributes};
 
 /// Provides a way to retrieve events from the system and from the windows that were registered to
 /// the events loop.
@@ -103,11 +103,14 @@ impl<T> EventLoopBuilder<T> {
     ///
     /// [`platform`]: crate::platform
     #[cfg_attr(
-        android,
+        android_platform,
         doc = "[`.with_android_app(app)`]: \
                crate::platform::android::EventLoopBuilderExtAndroid::with_android_app"
     )]
-    #[cfg_attr(not(android), doc = "[`.with_android_app(app)`]: #only-available-on-android")]
+    #[cfg_attr(
+        not(android_platform),
+        doc = "[`.with_android_app(app)`]: #only-available-on-android"
+    )]
     #[inline]
     pub fn build(&mut self) -> Result<EventLoop<T>, EventLoopError> {
         let _span = tracing::debug_span!("winit::EventLoopBuilder::build").entered();
@@ -434,6 +437,17 @@ impl ActiveEventLoop {
         self.p.listen_device_events(allowed);
     }
 
+    /// Returns the current system theme.
+    ///
+    /// Returns `None` if it cannot be determined on the current platform.
+    ///
+    /// ## Platform-specific
+    ///
+    /// - **iOS / Android / Wayland / x11 / Orbital:** Unsupported.
+    pub fn system_theme(&self) -> Option<Theme> {
+        self.p.system_theme()
+    }
+
     /// Sets the [`ControlFlow`].
     pub fn set_control_flow(&self, control_flow: ControlFlow) {
         self.p.set_control_flow(control_flow)
@@ -487,7 +501,7 @@ unsafe impl rwh_05::HasRawDisplayHandle for ActiveEventLoop {
 
 /// A proxy for the underlying display handle.
 ///
-/// The purpose of this type is to provide a cheaply clonable handle to the underlying
+/// The purpose of this type is to provide a cheaply cloneable handle to the underlying
 /// display handle. This is often used by graphics APIs to connect to the underlying APIs.
 /// It is difficult to keep a handle to the [`EventLoop`] type or the [`ActiveEventLoop`]
 /// type. In contrast, this type involves no lifetimes and can be persisted for as long as

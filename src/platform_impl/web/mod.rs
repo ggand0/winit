@@ -17,8 +17,8 @@
 // incoming events (from the registered handlers) and ensuring they are passed to the user in a
 // compliant way.
 
-// TODO: FP, remove when <https://github.com/rust-lang/rust/issues/121621> is fixed.
-#![allow(unknown_lints, non_local_definitions)]
+// TODO: FP, remove when <https://github.com/rust-lang/rust-clippy/issues/12377> is fixed.
+#![allow(clippy::empty_docs)]
 
 mod r#async;
 mod cursor;
@@ -28,10 +28,8 @@ mod event_loop;
 mod keyboard;
 mod main_thread;
 mod monitor;
+mod web_sys;
 mod window;
-
-#[path = "web_sys/mod.rs"]
-mod backend;
 
 pub use self::device::DeviceId;
 pub use self::error::OsError;
@@ -43,6 +41,7 @@ pub use self::monitor::{MonitorHandle, VideoModeHandle};
 pub use self::window::{PlatformSpecificWindowAttributes, Window, WindowId};
 
 pub(crate) use self::keyboard::KeyEventExtra;
+use self::web_sys as backend;
 pub(crate) use crate::icon::NoIcon as PlatformIcon;
 pub(crate) use crate::platform_impl::Fullscreen;
 pub(crate) use cursor::{

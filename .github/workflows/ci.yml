@@ -10,7 +10,7 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: taiki-e/checkout-action@v1
     - uses: dtolnay/rust-toolchain@nightly
       with:
         components: rustfmt
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - uses: taiki-e/install-action@v2
         with:
           tool: typos-cli
@@ -88,7 +88,7 @@ jobs:
       CMD: ${{ matrix.platform.cmd }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: taiki-e/checkout-action@v1
 
     - name: Restore cache of cargo folder
       # We use `restore` and later `save`, so that we can create the key after
@@ -107,7 +107,12 @@ jobs:
 
     - name: Generate lockfile
       # Also updates the crates.io index
-      run: cargo generate-lockfile && cargo update -p ahash --precise 0.8.7 && cargo update -p bumpalo --precise 3.14.0
+      run: |
+           cargo generate-lockfile
+           cargo update -p ahash --precise 0.8.7
+           cargo update -p bumpalo --precise 3.14.0
+           cargo update -p objc2-encode --precise 4.0.3
+           cargo update -p orbclient --precise 0.3.47
 
     - name: Install GCC Multilib
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
@@ -220,9 +225,24 @@ jobs:
           - { name: 'Windows', target: x86_64-pc-windows-gnu }
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: EmbarkStudios/cargo-deny-action@v1
+    - uses: taiki-e/checkout-action@v1
+    - uses: EmbarkStudios/cargo-deny-action@v2
       with:
         command: check
         log-level: error
         arguments: --all-features --target ${{ matrix.platform.target }}
+
+  swc:
+    name: Minimize JavaScript
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: taiki-e/checkout-action@v1
+      - name: Install SWC
+        run: sudo npm i -g @swc/cli
+      - name: Run SWC
+        run: |
+          swc src/platform_impl/web/web_sys/worker.js -o src/platform_impl/web/web_sys/worker.min.js
+      - name: Check for diff
+        run: |
+          [[ -z $(git status -s) ]]

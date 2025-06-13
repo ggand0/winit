@@ -1,5 +1,7 @@
 //! The Wayland window.
 
+use std::ffi::c_void;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -168,7 +170,7 @@ impl Window {
         if let (Some(xdg_activation), Some(token)) =
             (xdg_activation.as_ref(), attributes.platform_specific.activation_token)
         {
-            xdg_activation.activate(token._token, &surface);
+            xdg_activation.activate(token.token, &surface);
         }
 
         // XXX Do initial commit.
@@ -222,6 +224,10 @@ impl Window {
             window_requests,
             window_events_sink,
         })
+    }
+
+    pub(crate) fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
+        NonNull::new(self.window.xdg_toplevel().id().as_ptr().cast())
     }
 }
 

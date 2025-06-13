@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
+use tracing::warn;
 
 use sctk::reexports::client::backend::ObjectId;
 use sctk::reexports::client::protocol::wl_seat::WlSeat;
@@ -76,7 +77,13 @@ impl SeatHandler for WinitState {
         seat: WlSeat,
         capability: SeatCapability,
     ) {
-        let seat_state = self.seats.get_mut(&seat.id()).unwrap();
+        let seat_state = match self.seats.get_mut(&seat.id()) {
+            Some(seat_state) => seat_state,
+            None => {
+                warn!("Received wl_seat::new_capability for unknown seat");
+                return;
+            },
+        };
 
         match capability {
             SeatCapability::Touch if seat_state.touch.is_none() => {
@@ -89,8 +96,12 @@ impl SeatHandler for WinitState {
             },
             SeatCapability::Pointer if seat_state.pointer.is_none() => {
                 let surface = self.compositor_state.create_surface(queue_handle);
+                let viewport = self
+                    .viewporter_state
+                    .as_ref()
+                    .map(|state| state.get_viewport(&surface, queue_handle));
                 let surface_id = surface.id();
-                let pointer_data = WinitPointerData::new(seat.clone());
+                let pointer_data = WinitPointerData::new(seat.clone(), viewport);
                 let themed_pointer = self
                     .seat_state
                     .get_pointer_with_theme_and_data(
@@ -139,7 +150,13 @@ impl SeatHandler for WinitState {
         seat: WlSeat,
         capability: SeatCapability,
     ) {
-        let seat_state = self.seats.get_mut(&seat.id()).unwrap();
+        let seat_state = match self.seats.get_mut(&seat.id()) {
+            Some(seat_state) => seat_state,
+            None => {
+                warn!("Received wl_seat::remove_capability for unknown seat");
+                return;
+            },
+        };
 
         if let Some(text_input) = seat_state.text_input.take() {
             text_input.destroy();

@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-winit = "0.30.0"
+winit = "0.30.11"
 ```
 
 ## [Documentation](https://docs.rs/winit)
@@ -19,7 +19,7 @@ For features _outside_ the scope of winit, see [Are we GUI Yet?](https://arewegu
 
 ## Contact Us
 
-Join us in our [![Matrix](https://img.shields.io/badge/Matrix-%23rust--windowing%3Amatrix.org-blueviolet.svg)](https://matrix.to/#/#rust-windowing:matrix.org) room. If you don't get an answer there, try [![Libera.Chat](https://img.shields.io/badge/libera.chat-%23winit-red.svg)](https://web.libera.chat/#winit).
+Join us in our [![Matrix](https://img.shields.io/badge/Matrix-%23rust--windowing%3Amatrix.org-blueviolet.svg)](https://matrix.to/#/#rust-windowing:matrix.org) room.
 
 The maintainers have a meeting every friday at UTC 15. The meeting notes can be found [here](https://hackmd.io/@winit-meetings).
 
@@ -32,6 +32,10 @@ produced by the window.
 Winit is designed to be a low-level brick in a hierarchy of libraries. Consequently, in order to
 show something on the window you need to use the platform-specific getters provided by winit, or
 another library.
+
+## CONTRIBUTING
+
+For contributing guidelines see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## MSRV Policy
 

@@ -14,14 +14,14 @@ use core_foundation::runloop::{
     kCFRunLoopCommonModes, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopSourceContext,
     CFRunLoopSourceCreate, CFRunLoopSourceRef, CFRunLoopSourceSignal, CFRunLoopWakeUp,
 };
-use objc2::rc::{autoreleasepool, Id};
+use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::ProtocolObject;
-use objc2::{msg_send_id, ClassType};
+use objc2::sel;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindow};
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
 
-use super::app::WinitApplication;
-use super::app_delegate::{ApplicationDelegate, HandlePendingUserEvents};
+use super::app::override_send_event;
+use super::app_state::{ApplicationDelegate, HandlePendingUserEvents};
 use super::event::dummy_event;
 use super::monitor::{self, MonitorHandle};
 use super::observer::setup_control_flow_observers;
@@ -33,7 +33,7 @@ use crate::event_loop::{
 use crate::platform::macos::ActivationPolicy;
 use crate::platform::pump_events::PumpStatus;
 use crate::platform_impl::platform::cursor::CustomCursor;
-use crate::window::{CustomCursor as RootCustomCursor, CustomCursorSource};
+use crate::window::{CustomCursor as RootCustomCursor, CustomCursorSource, Theme};
 
 #[derive(Default)]
 pub struct PanicInfo {
@@ -67,15 +67,19 @@ impl PanicInfo {
 
 #[derive(Debug)]
 pub struct ActiveEventLoop {
-    delegate: Id<ApplicationDelegate>,
+    delegate: Retained<ApplicationDelegate>,
     pub(super) mtm: MainThreadMarker,
 }
 
 impl ActiveEventLoop {
-    pub(super) fn new_root(delegate: Id<ApplicationDelegate>) -> RootWindowTarget {
+    pub(super) fn new_root(delegate: Retained<ApplicationDelegate>) -> RootWindowTarget {
         let mtm = MainThreadMarker::from(&*delegate);
         let p = Self { delegate, mtm };
         RootWindowTarget { p, _marker: PhantomData }
+    }
+
+    pub(super) fn app_delegate(&self) -> &ApplicationDelegate {
+        &self.delegate
     }
 
     pub fn create_custom_cursor(&self, source: CustomCursorSource) -> RootCustomCursor {
@@ -100,6 +104,17 @@ impl ActiveEventLoop {
     #[inline]
     pub fn raw_display_handle_rwh_05(&self) -> rwh_05::RawDisplayHandle {
         rwh_05::RawDisplayHandle::AppKit(rwh_05::AppKitDisplayHandle::empty())
+    }
+
+    #[inline]
+    pub fn system_theme(&self) -> Option<Theme> {
+        let app = NSApplication::sharedApplication(self.mtm);
+
+        if app.respondsToSelector(sel!(effectiveAppearance)) {
+            Some(super::window_delegate::appearance_to_theme(&app.effectiveAppearance()))
+        } else {
+            Some(Theme::Light)
+        }
     }
 
     #[cfg(feature = "rwh_06")]
@@ -133,9 +148,7 @@ impl ActiveEventLoop {
     pub(crate) fn owned_display_handle(&self) -> OwnedDisplayHandle {
         OwnedDisplayHandle
     }
-}
 
-impl ActiveEventLoop {
     pub(crate) fn hide_application(&self) {
         NSApplication::sharedApplication(self.mtm).hide(None)
     }
@@ -172,12 +185,12 @@ pub struct EventLoop<T: 'static> {
     ///
     /// We intentionally don't store `WinitApplication` since we want to have
     /// the possibility of swapping that out at some point.
-    app: Id<NSApplication>,
+    app: Retained<NSApplication>,
     /// The application delegate that we've registered.
     ///
     /// The delegate is only weakly referenced by NSApplication, so we must
     /// keep it around here as well.
-    delegate: Id<ApplicationDelegate>,
+    delegate: Retained<ApplicationDelegate>,
 
     // Event sender and receiver, used for EventLoopProxy.
     sender: mpsc::Sender<T>,
@@ -189,18 +202,14 @@ pub struct EventLoop<T: 'static> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct PlatformSpecificEventLoopAttributes {
-    pub(crate) activation_policy: ActivationPolicy,
+    pub(crate) activation_policy: Option<ActivationPolicy>,
     pub(crate) default_menu: bool,
     pub(crate) activate_ignoring_other_apps: bool,
 }
 
 impl Default for PlatformSpecificEventLoopAttributes {
     fn default() -> Self {
-        Self {
-            activation_policy: Default::default(), // Regular
-            default_menu: true,
-            activate_ignoring_other_apps: true,
-        }
+        Self { activation_policy: None, default_menu: true, activate_ignoring_other_apps: true }
     }
 }
 
@@ -211,20 +220,14 @@ impl<T> EventLoop<T> {
         let mtm = MainThreadMarker::new()
             .expect("on macOS, `EventLoop` must be created on the main thread!");
 
-        let app: Id<NSApplication> =
-            unsafe { msg_send_id![WinitApplication::class(), sharedApplication] };
-
-        if !app.is_kind_of::<WinitApplication>() {
-            panic!(
-                "`winit` requires control over the principal class. You must create the event \
-                 loop before other parts of your application initialize NSApplication"
-            );
-        }
+        // Initialize the application (if it has not already been).
+        let app = NSApplication::sharedApplication(mtm);
 
         let activation_policy = match attributes.activation_policy {
-            ActivationPolicy::Regular => NSApplicationActivationPolicy::Regular,
-            ActivationPolicy::Accessory => NSApplicationActivationPolicy::Accessory,
-            ActivationPolicy::Prohibited => NSApplicationActivationPolicy::Prohibited,
+            None => None,
+            Some(ActivationPolicy::Regular) => Some(NSApplicationActivationPolicy::Regular),
+            Some(ActivationPolicy::Accessory) => Some(NSApplicationActivationPolicy::Accessory),
+            Some(ActivationPolicy::Prohibited) => Some(NSApplicationActivationPolicy::Prohibited),
         };
         let delegate = ApplicationDelegate::new(
             mtm,
@@ -237,8 +240,11 @@ impl<T> EventLoop<T> {
             app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
         });
 
+        // Override `sendEvent:` on the application to forward to our application state.
+        override_send_event(&app);
+
         let panic_info: Rc<PanicInfo> = Default::default();
-        setup_control_flow_observers(Rc::downgrade(&panic_info));
+        setup_control_flow_observers(mtm, Rc::downgrade(&panic_info));
 
         let (sender, receiver) = mpsc::channel();
         Ok(EventLoop {
@@ -411,6 +417,22 @@ pub(super) fn stop_app_immediately(app: &NSApplication) {
     });
 }
 
+/// Tell all windows to close.
+///
+/// This will synchronously trigger `WindowEvent::Destroyed` within
+/// `windowWillClose:`, giving the application one last chance to handle
+/// those events. It doesn't matter if the user also ends up closing the
+/// windows in `Window`'s `Drop` impl, once a window has been closed once, it
+/// stays closed.
+///
+/// This ensures that no windows linger on after the event loop has exited,
+/// see <https://github.com/rust-windowing/winit/issues/4135>.
+pub(super) fn notify_windows_of_exit(app: &NSApplication) {
+    for window in app.windows() {
+        window.close();
+    }
+}
+
 /// Catches panics that happen inside `f` and when a panic
 /// happens, stops the `sharedApplication`
 #[inline]
@@ -480,8 +502,7 @@ impl<T> EventLoopProxy<T> {
                 cancel: None,
                 perform: event_loop_proxy_handler,
             };
-            let source =
-                CFRunLoopSourceCreate(ptr::null_mut(), CFIndex::max_value() - 1, &mut context);
+            let source = CFRunLoopSourceCreate(ptr::null_mut(), CFIndex::MAX - 1, &mut context);
             CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
             CFRunLoopWakeUp(rl);
 

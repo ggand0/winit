@@ -42,7 +42,9 @@ pub trait EventLoopExtRunOnDemand {
     /// # Caveats
     /// - This extension isn't available on all platforms, since it's not always possible to return
     ///   to the caller (specifically this is impossible on iOS and Web - though with the Web
-    ///   backend it is possible to use `EventLoopExtWebSys::spawn()`[^1] more than once instead).
+    ///   backend it is possible to use `EventLoopExtWebSys::spawn()`
+    #[cfg_attr(not(web_platform), doc = "[^1]")]
+    ///   more than once instead).
     /// - No [`Window`] state can be carried between separate runs of the event loop.
     ///
     /// You are strongly encouraged to use [`EventLoop::run_app()`] for portability, unless you
@@ -61,8 +63,8 @@ pub trait EventLoopExtRunOnDemand {
     ///   are delivered via callbacks based on an event loop that is internal to the browser itself.
     /// - **iOS:** It's not possible to stop and start an `UIApplication` repeatedly on iOS.
     #[cfg_attr(not(web_platform), doc = "[^1]: `spawn()` is only available on `wasm` platforms.")]
-    #[rustfmt::skip]
     ///
+    #[rustfmt::skip]
     /// [`exit()`]: ActiveEventLoop::exit()
     /// [`set_control_flow()`]: ActiveEventLoop::set_control_flow()
     fn run_app_on_demand<A: ApplicationHandler<Self::UserEvent>>(
