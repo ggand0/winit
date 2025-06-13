@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::mem;
 use std::rc::Weak;
 use std::time::Instant;
@@ -40,6 +41,8 @@ pub(super) struct AppState {
     start_time: Cell<Option<Instant>>,
     wait_timeout: Cell<Option<Instant>>,
     pending_redraw: RefCell<Vec<WindowId>>,
+    // Restore event queue for continuous rendering compatibility
+    pending_events: RefCell<VecDeque<Event<HandlePendingUserEvents>>>,
     // NOTE: This is strongly referenced by our `NSWindowDelegate` and our `NSView` subclass, and
     // as such should be careful to not add fields that, in turn, strongly reference those.
 }
@@ -98,6 +101,7 @@ impl ApplicationDelegate {
             start_time: Cell::new(None),
             wait_timeout: Cell::new(None),
             pending_redraw: RefCell::new(vec![]),
+            pending_events: RefCell::new(VecDeque::new()),
         });
         unsafe { msg_send_id![super(this), init] }
     }
@@ -304,18 +308,36 @@ impl ApplicationDelegate {
 
     #[track_caller]
     fn maybe_queue_event(&self, event: Event<HandlePendingUserEvents>) {
-        // Most programmer actions in AppKit (e.g. change window fullscreen, set focused, etc.)
-        // result in an event being queued, and applied at a later point.
-        //
-        // However, it is not documented which actions do this, and which ones are done immediately,
-        // so to make sure that we don't encounter re-entrancy issues, we first check if we're
-        // currently handling another event, and if we are, we queue the event instead.
-        if !self.ivars().event_handler.in_use() {
-            self.handle_event(event);
+        // For continuous rendering compatibility, always queue input events that can occur
+        // rapidly during user interaction (keyboard, mouse, scroll, etc.)
+        // This ensures predictable batching for smooth async rendering
+        let should_always_queue = match &event {
+            Event::WindowEvent { event, .. } => matches!(event,
+                WindowEvent::KeyboardInput { .. } |
+                WindowEvent::CursorMoved { .. } |
+                WindowEvent::MouseInput { .. } |
+                WindowEvent::MouseWheel { .. } |
+                WindowEvent::DragOver { .. } |
+                WindowEvent::DragEnter { .. }
+            ),
+            Event::DeviceEvent { .. } => true, // Always queue device events
+            _ => false,
+        };
+
+        if should_always_queue {
+            // Use VecDeque for true batching - events will be processed in cleared()
+            self.ivars().pending_events.borrow_mut().push_back(event);
+            // Wake up the run loop to ensure events get processed
+            self.ivars().run_loop.wakeup();
         } else {
-            tracing::debug!(?event, "had to queue event since another is currently being handled");
-            let this = self.retain();
-            self.ivars().run_loop.queue_closure(move || this.handle_event(event));
+            // Use the original PR #3708 logic for other events
+            if !self.ivars().event_handler.in_use() {
+                self.handle_event(event);
+            } else {
+                tracing::debug!(?event, "had to queue event since another is currently being handled");
+                let this = self.retain();
+                self.ivars().run_loop.queue_closure(move || this.handle_event(event));
+            }
         }
     }
 
@@ -380,6 +402,12 @@ impl ApplicationDelegate {
         }
 
         self.handle_event(Event::UserEvent(HandlePendingUserEvents));
+
+        // Process queued input events in batch for continuous rendering compatibility
+        let events = mem::take(&mut *self.ivars().pending_events.borrow_mut());
+        for event in events {
+            self.handle_event(event);
+        }
 
         let redraw = mem::take(&mut *self.ivars().pending_redraw.borrow_mut());
         for window_id in redraw {
