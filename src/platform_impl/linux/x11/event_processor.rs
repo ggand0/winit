@@ -472,23 +472,22 @@ impl EventProcessor {
 
         if xev.message_type == atoms[XdndPosition] as c_ulong {
             // This event occurs every time the mouse moves while a file's being dragged
-            // over our window. We emit HoveredFile in response; while the macOS backend
-            // does that upon a drag entering, XDND doesn't have access to the actual drop
-            // data until this event. For parity with other platforms, we only emit
-            // `HoveredFile` the first time, though if winit's API is later extended to
-            // supply position updates with `HoveredFile` or another event, implementing
-            // that here would be trivial.
+            // over our window.
 
             let source_window = xev.data.get_long(0) as xproto::Window;
 
-            // Equivalent to `(x << shift) | y`
-            // where `shift = mem::size_of::<c_short>() * 8`
-            // Note that coordinates are in "desktop space", not "window space"
-            // (in X11 parlance, they're root window coordinates)
-            // let packed_coordinates = xev.data.get_long(2);
-            // let shift = mem::size_of::<libc::c_short>() * 8;
-            // let x = packed_coordinates >> shift;
-            // let y = packed_coordinates & !(x << shift);
+            // Extract cursor position from packed coordinates (root window coords)
+            let packed_coordinates = xev.data.get_long(2);
+            let (root_x, root_y) = super::dnd::Dnd::unpack_position(packed_coordinates);
+
+            // Convert root coords to window-local coords
+            if let Ok(cookie) = wt.xconn.xcb_connection()
+                .translate_coordinates(wt.root, window, root_x, root_y)
+            {
+                if let Ok(reply) = cookie.reply() {
+                    self.dnd.position = Some((reply.dst_x, reply.dst_y));
+                }
+            }
 
             // By our own state flow, `version` should never be `None` at this point.
             let version = self.dnd.version.unwrap_or(5);
@@ -541,17 +540,17 @@ impl EventProcessor {
         if xev.message_type == atoms[XdndDrop] as c_ulong {
             let (source_window, state) = if let Some(source_window) = self.dnd.source_window {
                 if let Some(Ok(ref path_list)) = self.dnd.result {
-                    for path in path_list {
-                        let event = Event::WindowEvent {
-                            window_id,
-                            //event: WindowEvent::DroppedFile(path.clone()),
-                            event: WindowEvent::DragDrop {
-                                paths: vec![path.clone()],
-                                position: PhysicalPosition::new(0.0, 0.0), // Placeholder
-                            },
-                        };
-                        callback(&self.target, event);
-                    }
+                    let position = self.dnd.position
+                        .map(|(x, y)| PhysicalPosition::new(x as f64, y as f64))
+                        .unwrap_or_else(|| PhysicalPosition::new(0.0, 0.0));
+                    let event = Event::WindowEvent {
+                        window_id,
+                        event: WindowEvent::DragDrop {
+                            paths: path_list.clone(),
+                            position,
+                        },
+                    };
+                    callback(&self.target, event);
                 }
                 (source_window, DndState::Accepted)
             } else {
@@ -600,13 +599,15 @@ impl EventProcessor {
         if let Ok(mut data) = unsafe { self.dnd.read_data(window) } {
             let parse_result = self.dnd.parse_data(&mut data);
             if let Ok(ref path_list) = parse_result {
+                let position = self.dnd.position
+                    .map(|(x, y)| PhysicalPosition::new(x as f64, y as f64))
+                    .unwrap_or_else(|| PhysicalPosition::new(0.0, 0.0));
                 for path in path_list {
                     let event = Event::WindowEvent {
                         window_id,
-                        //event: WindowEvent::HoveredFile(path.clone()),
                         event: WindowEvent::DragOver {
-                            position: PhysicalPosition::new(0.0, 0.0), // Placeholder, should be set correctly
-                        }                        
+                            position,
+                        }
                     };
                     callback(&self.target, event);
                 }

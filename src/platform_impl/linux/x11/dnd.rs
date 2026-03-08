@@ -1,4 +1,5 @@
 use std::io;
+use std::mem;
 use std::os::raw::*;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
@@ -45,20 +46,31 @@ pub struct Dnd {
     pub type_list: Option<Vec<xproto::Atom>>,
     // Populated by XdndPosition event handler
     pub source_window: Option<xproto::Window>,
+    /// Last cursor position from XdndPosition, in root window coordinates.
+    pub position: Option<(i16, i16)>,
     // Populated by SelectionNotify event handler (triggered by XdndPosition event handler)
     pub result: Option<Result<Vec<PathBuf>, DndDataParseError>>,
 }
 
 impl Dnd {
     pub fn new(xconn: Arc<XConnection>) -> Result<Self, X11Error> {
-        Ok(Dnd { xconn, version: None, type_list: None, source_window: None, result: None })
+        Ok(Dnd { xconn, version: None, type_list: None, source_window: None, position: None, result: None })
     }
 
     pub fn reset(&mut self) {
         self.version = None;
         self.type_list = None;
         self.source_window = None;
+        self.position = None;
         self.result = None;
+    }
+
+    /// Extract cursor position from XdndPosition packed coordinates (root window coords).
+    pub fn unpack_position(packed: c_long) -> (i16, i16) {
+        let shift = mem::size_of::<c_short>() * 8;
+        let x = (packed >> shift) as i16;
+        let y = (packed & 0xFFFF) as i16;
+        (x, y)
     }
 
     pub unsafe fn send_status(
